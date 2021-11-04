@@ -1,7 +1,10 @@
 
+#include <iostream>
 #include <Windows.h>
 #include <vector>
 #include <string>
+#include <thread>
+#include <mutex>
 #include "resource.h"
 
 #define WINDOW_CLASS_NAME L"MultiThreaded Loader Tool"
@@ -13,8 +16,20 @@ const unsigned int _kuiWINDOWHEIGHT = 1200;
 //Global Variables
 std::vector<std::wstring> g_vecImageFileNames;
 std::vector<std::wstring> g_vecSoundFileNames;
+std::vector<std::thread> tPool;
+std::vector<HBITMAP> hBmp;
+std::mutex mutex;
+std::condition_variable workQEvent;
 HINSTANCE g_hInstance;
+//ThreadPool& thPool = ThreadPool::GetInstance();
 bool g_bIsFileLoaded = false;
+bool stopping = false;
+
+int xPos, yPos;
+int loaded_Images = 0;
+int taskCount = 0;
+unsigned int threadCount = std::thread::hardware_concurrency();
+
 
 bool ChooseImageFilesToLoad(HWND _hwnd)
 {
@@ -120,7 +135,7 @@ bool ChooseSoundFilesToLoad(HWND _hwnd)
 
 		_wstrPathName.resize(ofn.nFileOffset, '\\');
 
-		wchar_t *_pwcharNextFile = &ofn.lpstrFile[ofn.nFileOffset];
+		wchar_t* _pwcharNextFile = &ofn.lpstrFile[ofn.nFileOffset];
 
 		while (*_pwcharNextFile)
 		{
@@ -140,6 +155,28 @@ bool ChooseSoundFilesToLoad(HWND _hwnd)
 	}
 
 }
+
+void PaintImage(HWND _hwnd) {
+
+	yPos = (loaded_Images / 12) *100;
+	xPos = (loaded_Images % 12) * 100;
+	HBITMAP loadFile = hBmp.back();
+	hBmp.pop_back();
+	_hwnd = CreateWindow(L"STATIC", NULL, WS_VISIBLE | WS_CHILD | SS_BITMAP, xPos, yPos, 0, 0, _hwnd, NULL, NULL, NULL);
+	SendMessage(_hwnd, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)loadFile);
+	loaded_Images++;
+}
+
+
+void LoadFunc(std::wstring fileName) {
+
+	HBITMAP currBMap = (HBITMAP)LoadImageW(NULL, fileName.c_str(), IMAGE_BITMAP, 100, 100, LR_LOADFROMFILE);
+	mutex.lock();
+	hBmp.push_back(currBMap);
+	mutex.unlock();
+	std::this_thread::sleep_for(std::chrono::seconds(2));
+}
+
 
 LRESULT CALLBACK WindowProc(HWND _hwnd, UINT _uiMsg, WPARAM _wparam, LPARAM _lparam)
 {
@@ -168,7 +205,6 @@ LRESULT CALLBACK WindowProc(HWND _hwnd, UINT _uiMsg, WPARAM _wparam, LPARAM _lpa
 
 		_hWindowDC = BeginPaint(_hwnd, &ps);
 		//Do all our painting here
-
 		EndPaint(_hwnd, &ps);
 		return (0);
 	}
@@ -183,9 +219,21 @@ LRESULT CALLBACK WindowProc(HWND _hwnd, UINT _uiMsg, WPARAM _wparam, LPARAM _lpa
 		{
 			if (ChooseImageFilesToLoad(_hwnd))
 			{
+
 				//Write code here to create multiple threads to load image files in parallel
-				
-				//Srtart your threads based on number of files selected
+
+				for (int i = 0; i < g_vecImageFileNames.size(); i++) {
+					std::wstring fileName = g_vecImageFileNames[i];
+					tPool.push_back(std::thread(LoadFunc,fileName));
+				}
+				for (int i = 0; i < tPool.size(); i++) {
+					tPool[i].join();
+				}
+				g_vecImageFileNames.clear();
+				while (!hBmp.empty()) {
+					PaintImage(_hwnd);
+				}
+				tPool.clear();
 			}
 			else
 			{
