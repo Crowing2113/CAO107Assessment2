@@ -170,11 +170,9 @@ void PaintImage(HWND _hwnd) {
 
 void LoadFunc(std::wstring fileName) {
 
-	HBITMAP currBMap = (HBITMAP)LoadImageW(NULL, fileName.c_str(), IMAGE_BITMAP, 100, 100, LR_LOADFROMFILE);
 	mutex.lock();
-	hBmp.push_back(currBMap);
+	hBmp.push_back((HBITMAP)LoadImageW(NULL, fileName.c_str(), IMAGE_BITMAP, 100, 100, LR_LOADFROMFILE));
 	mutex.unlock();
-	std::this_thread::sleep_for(std::chrono::seconds(2));
 }
 
 
